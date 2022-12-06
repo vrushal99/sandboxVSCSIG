@@ -43,8 +43,9 @@ define(["N/format", "N/record", "N/redirect", "N/runtime", "N/search"], /**
     
       // log.debug('invoice id param',invoiceId)
 
-
       //created saved search to fetch invoices whose process payment checkbox is checked.
+      if(_logValidation(invoiceId)){
+
       var invoiceSearchObj = search.create({
         type: "invoice",
         filters: [
@@ -67,6 +68,8 @@ define(["N/format", "N/record", "N/redirect", "N/runtime", "N/search"], /**
       var amountArray = 0;
       var finalSearch = [];
       //log.debug("Getinputdata", searchResult);
+
+      if(_logValidation(searchResult)){
 
       //length of the saved search
       var searchLen = searchResult.length;
@@ -116,6 +119,9 @@ define(["N/format", "N/record", "N/redirect", "N/runtime", "N/search"], /**
 
       //returned the finalsearch array
       return finalSearch;
+    }
+
+    }
     } catch (e) {
       log.error("Error in getinputdata() function", e.toString());
     }
@@ -146,9 +152,11 @@ define(["N/format", "N/record", "N/redirect", "N/runtime", "N/search"], /**
       
       let customInvoiceId = mapContextParse.customInvId;
 
+      if(_logValidation(invoiceId) && _logValidation(jounalEntryId)){
       //Function used to transform the invoice record to customer payment record on the basic of before release conditions.
-      // transformPaymentRecord(invoiceId, jounalEntryId);
-    
+      transformPaymentRecord(invoiceId, jounalEntryId);
+      }
+
       mapContext.write({
         key: invoiceId,
         value: {
@@ -181,13 +189,13 @@ define(["N/format", "N/record", "N/redirect", "N/runtime", "N/search"], /**
         name: "custscript_csig_ar_account_id_payment",
       });
 
-      log.debug('account',accountARId)
+      // log.debug('account',accountARId)
   
       //if invoiceid is present
       if (_logValidation(invoiceId) && _logValidation(jounalEntryId)) {
         //transform invoice to customer payment record
 
-        log.debug('in condition')
+        // log.debug('in condition')
 
         var customerPayment = record.transform({
           fromType: "invoice",
@@ -195,7 +203,9 @@ define(["N/format", "N/record", "N/redirect", "N/runtime", "N/search"], /**
           toType: "customerPayment",
           isDynamic: true,
         });
-         log.debug("customerPayment", customerPayment);
+        //  log.debug("customerPayment", customerPayment);
+
+        if(_logValidation(accountARId)){
         //set account value as per requirement
         customerPayment.setValue({
           fieldId: "aracct",
@@ -205,7 +215,8 @@ define(["N/format", "N/record", "N/redirect", "N/runtime", "N/search"], /**
         let applyLineCount = customerPayment.getLineCount({
           sublistId: "apply",
         });
-        log.debug("applyLineCount", applyLineCount);
+        // log.debug("applyLineCount", applyLineCount);
+
         for (let i = 0; i < applyLineCount; i++) {
           //fetched intrenal id of the invoice
           let JE_Num = customerPayment.getSublistValue({
@@ -215,6 +226,7 @@ define(["N/format", "N/record", "N/redirect", "N/runtime", "N/search"], /**
           });
           //if condition is true
           if (JE_Num == jounalEntryId) {
+
             customerPayment.selectLine({ sublistId: "apply", line: i });
             //set apply checkbox is true for selected invoice
             customerPayment.setCurrentSublistValue({
@@ -231,9 +243,10 @@ define(["N/format", "N/record", "N/redirect", "N/runtime", "N/search"], /**
               enableSourcing: true,
               ignoreMandatoryFields: true,
             });
-            log.debug("payment saved", payment_id);
+            log.audit("payment saved", payment_id);
           }
         }
+      }
       }
     } catch (e) {
       log.error("Error in transformPaymentRecord() function", e.toString());
@@ -243,9 +256,12 @@ define(["N/format", "N/record", "N/redirect", "N/runtime", "N/search"], /**
 
   function reduce(reduceContext) {
 
+    try{
+
+    // log.debug('reduceContext',reduceContext)
+
     var reduceContextParse = JSON.parse(reduceContext.values);
     log.debug('reduceContextParse',reduceContextParse)
-
   
     var reduceContextKey = JSON.parse(reduceContext.key);
     log.debug('reduceContextKey',reduceContextKey)
@@ -261,6 +277,7 @@ define(["N/format", "N/record", "N/redirect", "N/runtime", "N/search"], /**
 
     log.debug('retainageVal',retainageVal)
    
+    if(_logValidation(retainageVal)){
 
     let fileterRes = retainageVal.filter(
       x => x.invoiceId == reduceContextKey
@@ -268,64 +285,230 @@ define(["N/format", "N/record", "N/redirect", "N/runtime", "N/search"], /**
 
     log.debug('fileterRes',fileterRes)
 
-    let loadSalesOrder = record.load({
-      type:'salesorder',
-      id: reduceContextParse.salesOrderId
+    if(_logValidation(fileterRes)){
+
+    updateRetainageOnSalesOrder(reduceContextParse, fileterRes);
+
+    // updateRetainageOnCustomInvoice(reduceContextParse, fileterRes);
+
+    }
+
+    }
+
+    }
+    catch(e){
+      log.error('Error in reduce() function',e.toString())
+    }
+  }
+
+   function updateRetainageOnSalesOrder(reduceContextParse, fileterRes) {
+
+    try{
+
+    if(_logValidation(reduceContextParse.salesOrderId)){
+
+     var totalRetainageHead = 0;
+     var totalRetainageCwHead = 0;
+     var totalRetainageMsHead = 0;
+
+
+     let loadSalesOrder = record.load({
+       type: 'salesorder',
+       id: reduceContextParse.salesOrderId
+     });
+
+     for (const iterator of fileterRes) {
+      //  log.debug('iterator', iterator);
+
+       let itemLineCount = loadSalesOrder.getLineCount({
+         sublistId: 'item'
+       });
+
+       for (var i = 0; i < itemLineCount; i++) {
+
+         var getActivityCode = loadSalesOrder.getSublistText({
+           sublistId: 'item',
+           fieldId: 'cseg_paactivitycode',
+           line: i
+         });
+
+        //  log.debug('getActivityCode', getActivityCode);
+
+         var getActivityCodeFilter = iterator.activityCode;
+        //  log.debug('getActivityCodeFilter', getActivityCodeFilter);
+
+         var getRetaiageOfCw = iterator.percentCw || 0;
+         getRetaiageOfCw = parseFloat(getRetaiageOfCw);
+        //  log.debug('getRetaiageOfCw', getRetaiageOfCw);
+
+         var getRetainageOfMs = iterator.percentMs || 0;
+         getRetainageOfMs = parseFloat(getRetainageOfMs);
+        //  log.debug('getRetainageOfMs', getRetainageOfMs);
+
+
+         if (getActivityCode == getActivityCodeFilter) {
+
+           var getTotalComplete = loadSalesOrder.getSublistValue({
+             sublistId: 'item',
+             fieldId: 'custcol_mr_aia_total_to_date',
+             line: i
+           }) || 0;
+
+          //  log.debug('getTotalComplete', getTotalComplete);
+
+           var getMaterialsStored = loadSalesOrder.getSublistValue({
+             sublistId: 'item',
+             fieldId: 'custcol_mr_aia_materials_presntly_sto',
+             line: i
+           }) || 0;
+
+          //  log.debug('getMaterialsStored', getMaterialsStored);
+
+           //(Total Completed and Stored to Date X Retainage % of Completed Work) + (Materials Presently Stored X Retainage % of Materials Stored)
+           var totalRetaiangeOnLineItem = parseFloat((getTotalComplete * getRetaiageOfCw) + (getMaterialsStored * getRetainageOfMs));
+
+           log.debug('totalRetaiangeOnLineItem', totalRetaiangeOnLineItem);
+
+     if(_logValidation(totalRetaiangeOnLineItem)){
+
+           loadSalesOrder.setSublistValue({
+            sublistId: 'item',
+            fieldId: 'custcol_mr_aia_retainage',
+            value: totalRetaiangeOnLineItem,
+            line: i
+          });
+
+        }
+
+    //  if(_logValidation(getRetaiageOfCw)){
+
+    //       loadSalesOrder.setSublistValue({
+    //         sublistId: 'item',
+    //         fieldId: 'custcol_mr_aia_prcnt_compl_wr_line',
+    //         value: getRetaiageOfCw,
+    //         line: i
+    //       });
+
+    //     }
+
+    //  if(_logValidation(getRetainageOfMs)){
+
+    //       loadSalesOrder.setSublistValue({
+    //         sublistId: 'item',
+    //         fieldId: 'custcol_mr_aia_retain_prcnt_stored_li',
+    //         value: getRetainageOfMs,
+    //         line: i
+    //       });
+
+    //     }
+
+           totalRetainageHead += iterator.retainageTotal;
+           totalRetainageCwHead += iterator.amountCw;
+           totalRetainageMsHead += iterator.amountMs;
+
+
+         }
+       }
+     }
+
+     log.debug('totalRetainageHead', totalRetainageHead);
+     log.debug('totalRetainageCwHead', totalRetainageCwHead);
+     log.debug('totalRetainageMsHead', totalRetainageMsHead);
+
+     if(_logValidation(totalRetainageHead)){
+
+     loadSalesOrder.setValue({ fieldId:'custbody_mr_aia_total_retainage', value: parseFloat(totalRetainageHead)});
+
+     }
+
+     if(_logValidation(totalRetainageCwHead)){
+
+     loadSalesOrder.setValue({ fieldId:'custbody_mr_aia_retain_completed_wrk', value: parseFloat(totalRetainageCwHead)});
+
+     }
+
+     if(_logValidation(totalRetainageMsHead)){
+
+     loadSalesOrder.setValue({ fieldId:'custbody_mr_aia_retain_stored_mats', value: parseFloat(totalRetainageMsHead)});
+
+     }
+
+     var salesId = loadSalesOrder.save();
+
+     log.audit(`Sales Order Record Updated`,
+     `Sales Order ${salesId}`);
+    }
+    }
+    catch(e){
+      log.error('Error in updateRetainageOnSalesOrder() function',e.toString())
+    }
+   }
+
+   function updateRetainageOnCustomInvoice(reduceContextParse, fileterRes) {
+    
+    try{
+
+    if(_logValidation(reduceContextParse.customInvoiceId)){
+
+    let loadCustomInvoice = record.load({
+      type: 'customsale_mr_aia_invoice',
+      id: reduceContextParse.customInvoiceId
     });
 
-    for (const iterator of fileterRes)
-    {
-      log.debug('iterator',iterator);
+    for (const iterator of fileterRes) {
+      // log.debug('iterator', iterator);
 
-      let itemLineCount = loadSalesOrder.getLineCount({
-        sublistId:'item'
+      let itemLineCount = loadCustomInvoice.getLineCount({
+        sublistId: 'item'
       });
 
-      for(var i = 0; i < itemLineCount; i++){
+      for (var i = 0; i < itemLineCount; i++) {
 
-        var getActivityCode = loadSalesOrder.getSublistText({
+        var getActivityCode = loadCustomInvoice.getSublistText({
           sublistId: 'item',
           fieldId: 'cseg_paactivitycode',
           line: i
-        })
+        });
 
-        log.debug('getActivityCode',getActivityCode)
+        // log.debug('getActivityCode', getActivityCode);
 
         var getActivityCodeFilter = iterator.activityCode;
-        log.debug('getActivityCodeFilter',getActivityCodeFilter);
+        log.debug('getActivityCodeFilter', getActivityCodeFilter);
 
         var getRetaiageOfCw = iterator.percentCw || 0;
-        getRetaiageOfCw = parseFloat(getRetaiageOfCw)
-        log.debug('getRetaiageOfCw',getRetaiageOfCw);
+        getRetaiageOfCw = parseFloat(getRetaiageOfCw);
+        // log.debug('getRetaiageOfCw', getRetaiageOfCw);
 
         var getRetainageOfMs = iterator.percentMs || 0;
-        getRetainageOfMs = parseFloat(getRetainageOfMs)
-        log.debug('getRetainageOfMs',getRetainageOfMs);
+        getRetainageOfMs = parseFloat(getRetainageOfMs);
+        // log.debug('getRetainageOfMs', getRetainageOfMs);
 
 
-        if(getActivityCode == getActivityCodeFilter){
+        if (getActivityCode == getActivityCodeFilter) {
 
           //(Total Completed and Stored to Date X Retainage % of Completed Work) + (Materials Presently Stored X Retainage % of Materials Stored)
-
-          var getTotalComplete = loadSalesOrder.getSublistValue({
+          var getTotalComplete = loadCustomInvoice.getSublistValue({
             sublistId: 'item',
             fieldId: 'custcol_mr_aia_total_to_date',
             line: i
-          }) || 0
+          }) || 0;
 
-          log.debug('getTotalComplete',getTotalComplete)
+          // log.debug('getTotalComplete', getTotalComplete);
 
-          var getMaterialsStored = loadSalesOrder.getSublistValue({
+          var getMaterialsStored = loadCustomInvoice.getSublistValue({
             sublistId: 'item',
             fieldId: 'custcol_mr_aia_materials_presntly_sto',
             line: i
-          }) || 0
+          }) || 0;
 
-          log.debug('getMaterialsStored',getMaterialsStored)
+          // log.debug('getMaterialsStored', getMaterialsStored);
 
           var totalRetaiangeOnLineItem = parseFloat((getTotalComplete * getRetaiageOfCw) + (getMaterialsStored * getRetainageOfMs));
 
-          loadSalesOrder.setSublistValue({
+          // log.debug('totalRetaiangeOnLineItem', totalRetaiangeOnLineItem);
+
+
+          loadCustomInvoice.setSublistValue({
             sublistId: 'item',
             fieldId: 'custcol_mr_aia_retainage',
             value: totalRetaiangeOnLineItem,
@@ -336,10 +519,15 @@ define(["N/format", "N/record", "N/redirect", "N/runtime", "N/search"], /**
       }
     }
 
-    var salesId = loadSalesOrder.save();
+    var customInvoiceId = loadCustomInvoice.save();
 
-    log.debug('updated sales order',salesId)
-
+    log.audit(`[AIA] Invoice Record Updated`,
+    `[AIA] Invoice ${customInvoiceId}`);
+  }
+  }
+  catch(e){
+    log.error('Error in updateRetainageOnCustomInvoice() function', e.toString())
+  }
   }
 
   function summarize(summaryContext) {}

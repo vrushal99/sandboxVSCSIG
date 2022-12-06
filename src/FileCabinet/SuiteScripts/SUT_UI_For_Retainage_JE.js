@@ -3,7 +3,7 @@
  * @NScriptType Suitelet
  * @NModuleScope SameAccount
  */
- define(['N/record', 'N/render', 'N/runtime', 'N/search', 'N/ui/serverWidget','N/log',"N/url","N/task"],
+ define(['N/record', 'N/render', 'N/runtime', 'N/search', 'N/ui/serverWidget','N/log',"N/url","N/task","N/redirect"],
  /**
 * @param{file} file
 * @param{record} record
@@ -11,7 +11,7 @@
 * @param{runtime} runtime
 * @param{search} search
 */
-function ( record, render, runtime, search, serverWidget,log,url,task) {
+function ( record, render, runtime, search, serverWidget,log,url,task,redirect) {
      /**
       * Defines the Suitelet script trigger point.
       * @param {Object} scriptContext
@@ -33,8 +33,9 @@ function ( record, render, runtime, search, serverWidget,log,url,task) {
      form = addFields(form);
      form = addSublist(form);
      if (context.request.method === "GET") {
-      var formTest = form.addSubmitButton({label: "Release Retainage"});            
-      form.addResetButton({label: "Refresh"});
+      
+      form.addSubmitButton({label: "Release Retainage"});            
+
        if(_logValidation(i_ProjectId) || _logValidation(i_ActivityID) || _logValidation(i_CustId) || _logValidation(i_date)){
          form = updateSublistFieldData(i_ProjectId, form, i_ActivityID, i_InvId, i_CustId, i_date); 
        }                
@@ -86,6 +87,8 @@ function ( record, render, runtime, search, serverWidget,log,url,task) {
 
           if(invoiceIdArray.indexOf(inv_id) == -1 ){
             invoiceIdArray.push(inv_id);
+
+            // context.response.write('Update Sales Order and Custom Invoice from Invoice Id - '+ inv_id + '\n');
             }
           
 
@@ -100,6 +103,7 @@ function ( record, render, runtime, search, serverWidget,log,url,task) {
           });
         }
 
+      
   
       }
       log.debug("newArray in post",invoiceIdArray);
@@ -119,6 +123,10 @@ function ( record, render, runtime, search, serverWidget,log,url,task) {
 
     mrTask.submit();
 
+    redirect.toSuitelet({
+      scriptId: 'customscript_csig_sut_ui_for_retainage',
+      deploymentId: 'customdeploy_csig_sut_ui_for_retainage',
+  });
 
      }
    }
@@ -157,7 +165,7 @@ function ( record, render, runtime, search, serverWidget,log,url,task) {
            var AIA_Total_Completed_and_Stored_to_Date = o_prjResult.getValue({ name: "custcol_mr_aia_total_to_date", label: "[AIA] Total Completed and Stored to Date" });
            var AIA_Materials_Presently_Stored = o_prjResult.getValue({ name: "custcol_mr_aia_materials_presntly_sto", label: "[AIA] Materials Presently Stored" });
            var i_Invoice =  o_prjResult.getValue({name: "invoicenum", label: "Invoice Number"});
-           var i_projectname = o_prjResult.getValue({name: "altname",join: "customer",label: "Name"});
+           var i_projectname = o_prjResult.getValue({name: "entityid",join: "customer",label: "Name"});
            var i_retainage_percent_cw = o_prjResult.getValue({name: "custcol_mr_aia_prcnt_compl_wr_line", label: "[AIA] Line Retainage % of Completed Work"})
            var i_retainage_percent_ms = o_prjResult.getValue({name: "custcol_mr_aia_retain_prcnt_stored_li", label: "[AIA] Line Retainage % of Stored Material"})
            if(_logValidation(i_InvId )){
@@ -552,7 +560,7 @@ function ( record, render, runtime, search, serverWidget,log,url,task) {
     a_filter.push( "AND")
     a_filter.push(["custcol_mr_aia_total_to_date","isnotempty",""]);  
     a_filter.push( "AND")
-    a_filter.push(["status","anyof","CustInvc:A"]);
+    a_filter.push(["status","noneof","CustInvc:B"]);
    if(_logValidation(projectUI)){
      a_filter.push( "AND" );
      a_filter.push( ["job.internalid","anyof",projectUI]);
@@ -587,7 +595,9 @@ function ( record, render, runtime, search, serverWidget,log,url,task) {
        search.createColumn({ name: "custcol_mr_aia_total_to_date", label: "[AIA] Total Completed and Stored to Date" }),
        search.createColumn({ name: "custcol_mr_aia_materials_presntly_sto", label: "[AIA] Materials Presently Stored" }),
        search.createColumn({name: "invoicenum", label: "Invoice Number"}),
-       search.createColumn({name: "altname",join: "customer",label: "Name"}),
+      //  search.createColumn({name: "altname",join: "customer",label: "Name"}),
+      search.createColumn({name: "entityid",join: "customer",label: "Name"}),
+
        search.createColumn({name: "custcol_mr_aia_prcnt_compl_wr_line", label: "[AIA] Line Retainage % of Completed Work"}),
        search.createColumn({name: "custcol_mr_aia_retain_prcnt_stored_li", label: "[AIA] Line Retainage % of Stored Material"})
       ]
